@@ -231,7 +231,8 @@ class ResPartner(http.Controller):
                 message="Customer updated successfully",
                 data={
                     "odoo_customer_id": customer.id,
-                    "ordertech_customer_id": customer.ordertech_customer_id
+                    "ordertech_customer_id": customer.ordertech_customer_id,
+                    "updated_values": update_vals
                 },
                 status=200
             )
