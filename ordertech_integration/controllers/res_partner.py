@@ -28,13 +28,13 @@ class ResPartner(http.Controller):
                 "mobile": c.mobile,
                 "email": c.email,
                 "tags": [t.name for t in c.category_id],
-                "company": [c.company_id.id, c.company_id.name] if c.company_id else None,
+                "company_id": [c.company_id.id, c.company_id.name] if c.company_id else None,
                 "address": {
                     "street": c.street,
                     "city": c.city,
-                    "state": [c.state_id.id, c.state_id.name] if c.state_id else None,
+                    "state_id": [c.state_id.id, c.state_id.name] if c.state_id else None,
                     "zip": c.zip,
-                    "country": [c.country_id.id, c.country_id.name] if c.country_id else None,
+                    "country_id": [c.country_id.id, c.country_id.name] if c.country_id else None,
                     "country_code": c.country_code,
                     "latitude": c.partner_latitude,
                     "longitude": c.partner_longitude
@@ -50,6 +50,7 @@ class ResPartner(http.Controller):
             _logger.exception("Error fetching customers api request")
             return invalid_response(
                 error= str(e),
+                status=500
             )
 
     @http.route('/api/v1/customer',type='http',methods=['POST'],auth='none',csrf=False)
@@ -59,9 +60,13 @@ class ResPartner(http.Controller):
                 error='Unauthorized',
                 status=401
             )
-        args = request.httprequest.data.decode()
-        vals = json.loads(args)
-
+        try:
+            args = request.httprequest.data.decode()
+            vals = json.loads(args)
+        except Exception as e:
+            return invalid_response(
+                error=f"invalid Json type : {str(e)}"
+            )
         required_fields = ['ordertech_customer_id', 'name']
         missing_fields = [field for field in required_fields if not vals.get(field)]
 
@@ -69,4 +74,171 @@ class ResPartner(http.Controller):
             return invalid_response(
                 error= f"Missing required field(s): {', '.join(missing_fields)}"
             )
-        print (vals)
+
+        company_id = vals.get('company_id')
+        if company_id is not None:
+            if not isinstance(company_id, int):
+                return invalid_response(error="'company_id' must be an integer")
+            company = request.env['res.company'].sudo().browse(company_id).exists()
+            if not company:
+                return invalid_response(error="Company not found, please enter correct id")
+
+
+        address = vals.get('address', {})
+        if address:
+            state_id = address.get('state_id')
+            if state_id is not None:
+                if not isinstance(state_id, int):
+                    return invalid_response(error="'state_id' must be an integer")
+                state = request.env['res.country.state'].sudo().browse(state_id).exists()
+                if not state:
+                    return invalid_response(error="State not found, please enter correct id")
+
+            country_id = address.get('country_id')
+            if country_id is not None:
+                if not isinstance(country_id, int):
+                    return invalid_response(error="'country_id' must be an integer")
+                country = request.env['res.country'].sudo().browse(country_id).exists()
+                if not country:
+                    return invalid_response(error="Country not found, please enter correct id")
+
+            longitude = address.get('longitude')
+            if longitude is not None:
+                if not isinstance(longitude, float):
+                    return invalid_response(error="'country_id' must be an float")
+
+        customer_vals = {
+            "ordertech_customer_id": vals['ordertech_customer_id'],
+            "name": vals['name'],
+            "phone": vals.get("phone"),
+            "mobile": vals.get("mobile"),
+            "email": vals.get("email"),
+            "company_id": vals.get('company_id'),
+            "country_id": vals.get('address',{}).get('country_id'),
+            "state_id": vals.get('address', {}).get('state_id'),
+            "city": vals.get('address', {}).get('city'),
+            "street": vals.get('address', {}).get('street'),
+            "zip": vals.get('address', {}).get('zip'),
+            "partner_latitude": vals.get('address', {}).get('latitude'),
+            "partner_longitude": vals.get('address', {}).get('longitude'),
+        }
+        try:
+            customer = request.env['res.partner'].sudo().create(customer_vals)
+            if customer:
+                return valid_response(
+                    message="Customer created successfully",
+                    data={
+                        "odoo_customer_id": customer.id,
+                        "ordertech_customer_id": customer.ordertech_customer_id
+                    },
+                    status=201
+                )
+        except Exception as e:
+            _logger.exception("Error create customers api request")
+            return invalid_response(
+                error=str(e),
+                status=500
+            )
+
+    @http.route('/api/v1/customer/<int:customer_id>', type='http', methods=['PUT'], auth='none', csrf=False)
+    def update_customer(self, customer_id):
+
+        if not check_api_key():
+            return invalid_response(
+                error='Unauthorized',
+                status=401
+            )
+
+        customer = request.env['res.partner'].sudo().browse(customer_id).exists()
+        if not customer:
+            return invalid_response(
+                error="Customer not found",
+                status=404
+            )
+
+        try:
+            args = request.httprequest.data.decode()
+            vals = json.loads(args)
+        except Exception as e:
+            return invalid_response(
+                error=f"Invalid JSON type: {str(e)}",
+                status=400
+            )
+
+        company_id = vals.get('company_id')
+        if company_id is not None:
+            if not isinstance(company_id, int):
+                return invalid_response(error="'company_id' must be an integer")
+            company = request.env['res.company'].sudo().browse(company_id).exists()
+            if not company:
+                return invalid_response(error="Company not found, please enter correct id")
+
+        address = vals.get('address', {})
+        if address and not isinstance(address, dict):
+            return invalid_response(error="'address' must be an object")
+
+        state_id = address.get('state_id')
+        if state_id is not None:
+            if not isinstance(state_id, int):
+                return invalid_response(error="'state_id' must be an integer")
+            state = request.env['res.country.state'].sudo().browse(state_id).exists()
+            if not state:
+                return invalid_response(error="State not found, please enter correct id")
+
+        country_id = address.get('country_id')
+        if country_id is not None:
+            if not isinstance(country_id, int):
+                return invalid_response(error="'country_id' must be an integer")
+            country = request.env['res.country'].sudo().browse(country_id).exists()
+            if not country:
+                return invalid_response(error="Country not found, please enter correct id")
+
+        longitude = address.get('longitude')
+        if longitude is not None:
+            if not isinstance(longitude, float):
+                return invalid_response(error="'longitude' must be a float")
+
+        latitude = address.get('latitude')
+        if latitude is not None:
+            if not isinstance(latitude, float):
+                return invalid_response(error="'latitude' must be a float")
+
+
+        update_vals = {
+            "name": vals.get("name"),
+            "phone": vals.get("phone"),
+            "mobile": vals.get("mobile"),
+            "email": vals.get("email"),
+            "company_id": vals.get("company_id"),
+        }
+
+        update_vals.update({
+            "country_id": address.get("country_id"),
+            "state_id": address.get("state_id"),
+            "city": address.get("city"),
+            "street": address.get("street"),
+            "zip": address.get("zip"),
+            "partner_latitude": address.get("latitude"),
+            "partner_longitude": address.get("longitude"),
+        })
+
+        update_vals = {k: v for k, v in update_vals.items() if v is not None}
+
+        try:
+            customer.sudo().write(update_vals)
+
+            return valid_response(
+                message="Customer updated successfully",
+                data={
+                    "odoo_customer_id": customer.id,
+                    "ordertech_customer_id": customer.ordertech_customer_id
+                },
+                status=200
+            )
+
+        except Exception as e:
+            _logger.exception("Error updating customer from API")
+            return invalid_response(
+                error=str(e),
+                status=500
+            )
