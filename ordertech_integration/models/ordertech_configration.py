@@ -1,4 +1,8 @@
-from odoo import models, fields
+from odoo import models, fields, _
+import requests
+import json
+
+from odoo.exceptions import UserError
 
 
 class OrderTechConfigration(models.Model):
@@ -13,7 +17,34 @@ class OrderTechConfigration(models.Model):
     exp_token = fields.Char()
     refresh_token = fields.Char()
     active = fields.Boolean(default=True)
-    state = fields.Selection(selection=[
-        ('unconnected', 'Unconnected'),
-        ('connected', 'Connected')
-    ],default='unconnected')
+
+    def action_ordertech_connect(self):
+        for rec in self:
+            if rec.url and rec.email and rec.password:
+                url = f"{rec.url}/api/auth/signin"
+
+                payload = json.dumps({
+                    "email": rec.email,
+                    "password": rec.password
+                })
+                headers = {
+                    'Content-Type': 'application/json'
+                }
+                try:
+                    response = requests.request("POST", url, headers=headers, data=payload)
+                except Exception as e :
+                    raise UserError(str(e))
+
+                if response.status_code == 200:
+                    response_rec = response.json()
+                    rec.exp_token = response_rec.get('access_token')
+                    rec.refresh_token = response_rec.get('refresh_token')
+
+                    return {
+                        'type': 'ir.actions.client',
+                        'tag': 'display_notification',
+                        'params': {
+                            'type': 'success',
+                            'message': _("Credentials look good!"),
+                        }
+                    }
