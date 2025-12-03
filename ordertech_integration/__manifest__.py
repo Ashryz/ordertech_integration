@@ -18,7 +18,7 @@
     ],
 
     'data': [
-
+        'views/ordertech_view.xml',
     ],
 
     'installable': True,
