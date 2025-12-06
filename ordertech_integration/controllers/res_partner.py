@@ -210,9 +210,6 @@ class ResPartner(http.Controller):
             "mobile": vals.get("mobile"),
             "email": vals.get("email"),
             "company_id": vals.get("company_id"),
-        }
-
-        update_vals.update({
             "country_id": address.get("country_id"),
             "state_id": address.get("state_id"),
             "city": address.get("city"),
@@ -220,7 +217,7 @@ class ResPartner(http.Controller):
             "zip": address.get("zip"),
             "partner_latitude": address.get("latitude"),
             "partner_longitude": address.get("longitude"),
-        })
+        }
 
         update_vals = {k: v for k, v in update_vals.items() if v is not None}
 

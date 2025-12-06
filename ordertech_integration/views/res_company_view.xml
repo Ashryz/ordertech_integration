@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<odoo>
+    <record id="view_company_form_inherit" model="ir.ui.view">
+        <field name="name">view.company.form.inherit</field>
+        <field name="model">res.company</field>
+        <field name="inherit_id" ref="base.view_company_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//page[@name='general_info']/group/group/field[@name='currency_id']" position="after">
+                <field name="open_time" widget="float_time"/>
+                <field name="close_time" widget="float_time"/>
+                <field name="is_restaurant" widget="boolean_toggle"/>
+                <field name="ordertech_tenants_id" readonly="1" invisible="not ordertech_tenants_id"/>
+            </xpath>
+        </field>
+    </record>
+
+</odoo>

@@ -36,9 +36,9 @@ class OrderTechConfigration(models.Model):
                     raise UserError(str(e))
 
                 if response.status_code == 200:
-                    response_rec = response.json()
-                    rec.exp_token = response_rec.get('access_token')
-                    rec.refresh_token = response_rec.get('refresh_token')
+                    response_data = response.json()
+                    rec.exp_token = response_data.get('access_token')
+                    rec.refresh_token = response_data.get('refresh_token')
 
                     return {
                         'type': 'ir.actions.client',
@@ -46,5 +46,27 @@ class OrderTechConfigration(models.Model):
                         'params': {
                             'type': 'success',
                             'message': _("Credentials look good!"),
+                            'next': {'type': 'ir.actions.client',
+                                     'tag':'soft_reload'},
                         }
                     }
+
+    def refresh_tokens(self):
+        for rec in self:
+            if rec.url and rec.refresh_token:
+                url = f"{rec.url}/api/auth/refresh"
+                payload = json.dumps({
+                    "refresh_token": rec.refresh_token
+                })
+                headers = {
+                    'Content-Type': 'application/json'
+                }
+                try:
+                    response = requests.request("POST", url, headers=headers, data=payload)
+                except Exception as e :
+                    raise UserError(str(e))
+
+                if response.status_code == 200:
+                    response_data = response.json()
+                    rec.exp_token = response_data.get('access_token')
+                    rec.refresh_token = response_data.get('refresh_token')

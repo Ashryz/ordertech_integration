@@ -1,13 +1,19 @@
 from odoo.http import request
+import secrets
 
 
-API_KEY = 'bfr8sd73vcfd3e6a63d182f26cbca87f4f3723e0e'
+def get_api_key():
+    params = request.env['ir.config_parameter'].sudo()
+    saved_key = params.get_param('api.rest.key')
+    if not saved_key:
+        saved_key = secrets.token_hex(32)
+        params.set_param('api.rest.key', saved_key)
+    return saved_key
 
 def check_api_key():
-    api_key = request.httprequest.headers.get('X-API-KEY')
-    if api_key != API_KEY:
-        return False
-    return True
+    request_key = request.httprequest.headers.get('X-API-KEY')
+    saved_key = get_api_key()
+    return request_key == saved_key
 
 def valid_response(message=None, data=None, status=200):
     response_body = {

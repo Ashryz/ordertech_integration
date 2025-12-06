@@ -16,12 +16,13 @@
         'base_geolocalize'
 
     ],
-
     'data': [
         'security/ir.model.access.csv',
         'views/ordertech_view.xml',
+        'views/res_company_view.xml',
+        'views/res_partner_view.xml',
     ],
-
+    'post_init_hook': 'post_init_generate_api_key',
     'installable': True,
     'application': True,
     'auto_install': False,
