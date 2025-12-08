@@ -2,7 +2,7 @@ from odoo import models, fields, _
 import requests
 import json
 
-from odoo.exceptions import UserError
+from odoo.exceptions import UserError, ValidationError
 
 
 class OrderTechConfigration(models.Model):
@@ -12,8 +12,8 @@ class OrderTechConfigration(models.Model):
 
     name = fields.Char(string='Instance Name',required=True)
     url = fields.Char(string='OrderTech URL', required=True)
-    email = fields.Char(string='Email', required=True)
-    password = fields.Char(string='Password', required=True)
+    email = fields.Char(string='Email')
+    password = fields.Char(string='Password')
     exp_token = fields.Char()
     refresh_token = fields.Char()
     active = fields.Boolean(default=True)
@@ -50,6 +50,8 @@ class OrderTechConfigration(models.Model):
                                      'tag':'soft_reload'},
                         }
                     }
+            else:
+                raise ValidationError(_('You should provide email , password to connect order tech'))
 
     def refresh_tokens(self):
         for rec in self:
