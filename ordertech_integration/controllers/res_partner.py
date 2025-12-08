@@ -83,29 +83,36 @@ class ResPartner(http.Controller):
             if not company:
                 return invalid_response(error="Company not found, please enter correct id")
 
-
         address = vals.get('address', {})
-        if address:
-            state_id = address.get('state_id')
-            if state_id is not None:
-                if not isinstance(state_id, int):
-                    return invalid_response(error="'state_id' must be an integer")
-                state = request.env['res.country.state'].sudo().browse(state_id).exists()
-                if not state:
-                    return invalid_response(error="State not found, please enter correct id")
+        if address and not isinstance(address, dict):
+            return invalid_response(error="'address' must be an object")
 
-            country_id = address.get('country_id')
-            if country_id is not None:
-                if not isinstance(country_id, int):
-                    return invalid_response(error="'country_id' must be an integer")
-                country = request.env['res.country'].sudo().browse(country_id).exists()
-                if not country:
-                    return invalid_response(error="Country not found, please enter correct id")
+        state_id = address.get('state_id')
+        if state_id is not None:
+            if not isinstance(state_id, int):
+                return invalid_response(error="'state_id' must be an integer")
+            state = request.env['res.country.state'].sudo().browse(state_id).exists()
+            if not state:
+                return invalid_response(error="State not found, please enter correct id")
 
-            longitude = address.get('longitude')
-            if longitude is not None:
-                if not isinstance(longitude, float):
-                    return invalid_response(error="'country_id' must be an float")
+        country_id = address.get('country_id')
+        if country_id is not None:
+            if not isinstance(country_id, int):
+                return invalid_response(error="'country_id' must be an integer")
+            country = request.env['res.country'].sudo().browse(country_id).exists()
+            if not country:
+                return invalid_response(error="Country not found, please enter correct id")
+
+        longitude = address.get('longitude')
+        latitude = address.get('latitude')
+        if (longitude is not None and latitude is None) or (longitude is None and latitude is not None):
+            return invalid_response(error="'longitude' and 'latitude' must be provided together")
+        if longitude is not None:
+            if not isinstance(longitude, float):
+                return invalid_response(error="'longitude' must be an float")
+        if latitude is not None:
+            if not isinstance(latitude, float):
+                return invalid_response(error="'latitude' must be a float")
 
         customer_vals = {
             "ordertech_customer_id": vals['ordertech_customer_id'],
@@ -137,7 +144,7 @@ class ResPartner(http.Controller):
             _logger.exception("Error create customers api request")
             return invalid_response(
                 error=str(e),
-                status=500
+                status=400
             )
 
     @http.route('/api/v1/customer/<int:customer_id>', type='http', methods=['PUT'], auth='none', csrf=False)
@@ -194,17 +201,19 @@ class ResPartner(http.Controller):
                 return invalid_response(error="Country not found, please enter correct id")
 
         longitude = address.get('longitude')
+        latitude = address.get('latitude')
+        if (longitude is not None and latitude is None) or (longitude is None and latitude is not None):
+            return invalid_response(error="'longitude' and 'latitude' must be provided together")
         if longitude is not None:
             if not isinstance(longitude, float):
-                return invalid_response(error="'longitude' must be a float")
-
-        latitude = address.get('latitude')
+                return invalid_response(error="'longitude' must be an float")
         if latitude is not None:
             if not isinstance(latitude, float):
                 return invalid_response(error="'latitude' must be a float")
 
 
         update_vals = {
+            "ordertech_customer_id": vals.get('ordertech_customer_id'),
             "name": vals.get("name"),
             "phone": vals.get("phone"),
             "mobile": vals.get("mobile"),
@@ -238,5 +247,5 @@ class ResPartner(http.Controller):
             _logger.exception("Error updating customer from API")
             return invalid_response(
                 error=str(e),
-                status=500
+                status=400
             )
