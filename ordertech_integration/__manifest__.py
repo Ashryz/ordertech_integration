@@ -18,6 +18,7 @@
     ],
     'data': [
         'security/ir.model.access.csv',
+        'data/ordertech_configration.xml',
         'views/ordertech_view.xml',
         'views/res_company_view.xml',
         'views/res_partner_view.xml',
