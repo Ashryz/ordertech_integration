@@ -5,11 +5,32 @@
         <field name="model">res.company</field>
         <field name="inherit_id" ref="base.view_company_form"/>
         <field name="arch" type="xml">
-            <xpath expr="//page[@name='general_info']/group/group/field[@name='currency_id']" position="after">
-                <field name="open_time" widget="float_time"/>
-                <field name="close_time" widget="float_time"/>
-                <field name="is_restaurant" widget="boolean_toggle"/>
-                <field name="ordertech_tenants_id" readonly="1" invisible="not ordertech_tenants_id"/>
+            <xpath expr="//page[@name='general_info']" position="after">
+                <page string="OrderTech Information" name="ordertech_info">
+                    <group>
+                        <group>
+                            <field name="is_restaurant"/>
+                            <field name="open_time" widget="float_time"/>
+                            <field name="close_time" widget="float_time"/>
+                        </group>
+                        <group>
+                            <field name="is_branch"/>
+                            <field name="slug" required="is_branch"/>
+                            <field name="notes" required="is_branch"/>
+                            <field name="delivery_radius_km" required="is_branch"/>
+                        </group>
+                    </group>
+                    <group>
+                        <group>
+                            <field name="ordertech_tenant_id" string="OrderTech Tenants ID" readonly="1"
+                                   invisible="not ordertech_tenant_id"/>
+                        </group>
+                        <group>
+                            <field name="ordertech_tenant_branch_id" string="OrderTech Tenants Branch ID" readonly="1"
+                                   invisible="not ordertech_tenant_branch_id"/>
+                        </group>
+                    </group>
+                </page>
             </xpath>
         </field>
     </record>

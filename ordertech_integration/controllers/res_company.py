@@ -47,3 +47,49 @@ class ResCompany(http.Controller):
                 error=str(e),
                 status=500
             )
+
+    @http.route('/api/v1/webhooks/ordertech/tenantId',methods=["PUT"],type='http',auth='none',csrf=False)
+    def update_restaurant_tenant_id(self,*kwargs):
+        if not check_api_key():
+            return invalid_response(
+                error='Unauthorized',
+                status=401
+            )
+        try:
+            args = request.httprequest.data.decode()
+            vals = json.loads(args)
+        except Exception as e:
+            return invalid_response(
+                error=f"invalid Json type : {str(e)}"
+            )
+        required_fields = ['odoo_restaurant_id', 'ordertech_tenantId']
+        missing_fields = [field for field in required_fields if not vals.get(field)]
+
+        if missing_fields:
+            return invalid_response(
+                error=f"Missing required field(s): {', '.join(missing_fields)}"
+            )
+        restaurant = request.env['res.company'].sudo().browse(vals.get('odoo_restaurant_id')).exists()
+        if not restaurant:
+            return invalid_response(
+                error="restaurant not found",
+                status=404
+            )
+        updated_vals = {
+            "ordertech_tenant_id" : vals.get('ordertech_tenantId')
+        }
+        try:
+            restaurant.sudo().write(updated_vals)
+            return valid_response(
+                message="restaurant updated successfully",
+                data={
+                    "updated_values": updated_vals
+                },
+                status=200
+            )
+        except Exception as e:
+            _logger.exception("Error updating restaurant from API")
+            return invalid_response(
+                error=str(e),
+                status=400
+            )
