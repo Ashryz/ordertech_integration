@@ -6,7 +6,7 @@
         <field name="inherit_id" ref="base.view_partner_form"/>
         <field name="arch" type="xml">
             <xpath expr="//group/group/span" position="before">
-                <field name="ordertech_customer_id"  readonly="1" invisible="not ordertech_customer_id"/>
+                <field name="ordertech_customerId"  readonly="1" invisible="not ordertech_customerId"/>
             </xpath>
         </field>
     </record>

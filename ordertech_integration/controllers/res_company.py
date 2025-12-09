@@ -3,14 +3,14 @@ import logging
 
 from odoo import http
 from odoo.http import request
-
 from .general_functions import valid_response, invalid_response, check_api_key
 
 _logger = logging.getLogger(__name__)
 
+
 class ResCompany(http.Controller):
 
-    @http.route('/api/v1/restaurants',type='http',methods=['GET'],auth='none',csrf=False)
+    @http.route('/api/v1/restaurants', type='http', methods=['GET'], auth='none', csrf=False)
     def get_all_restaurants(self):
         if not check_api_key():
             return invalid_response(
@@ -34,11 +34,13 @@ class ResCompany(http.Controller):
                 "logo": f"{base_url}/web/image/res.company/{r.id}/logo" if r.logo else None,
                 "open_time": r.open_time,
                 "close_time": r.close_time
-            } for r in restaurants ]
+            } for r in restaurants]
 
             return valid_response(
                 message="Success",
-                data={'restaurants': restaurant_list},
+                data={'webhookUrl': f"{base_url}/api/v1/webhooks/ordertech/tenantId",
+                      'restaurants': restaurant_list
+                },
             )
 
         except Exception as e:
@@ -48,8 +50,8 @@ class ResCompany(http.Controller):
                 status=500
             )
 
-    @http.route('/api/v1/webhooks/ordertech/tenantId',methods=["PUT"],type='http',auth='none',csrf=False)
-    def update_restaurant_tenant_id(self,*kwargs):
+    @http.route('/api/v1/webhooks/ordertech/tenantId', methods=["PUT"], type='http', auth='none', csrf=False)
+    def update_restaurant_tenant_id(self, *kwargs):
         if not check_api_key():
             return invalid_response(
                 error='Unauthorized',
@@ -76,12 +78,12 @@ class ResCompany(http.Controller):
                 status=404
             )
         updated_vals = {
-            "ordertech_tenant_id" : vals.get('ordertech_tenantId')
+            "ordertech_tenant_id": vals.get('ordertech_tenantId')
         }
         try:
             restaurant.sudo().write(updated_vals)
             return valid_response(
-                message="restaurant updated successfully",
+                message="restaurant updated tenantId successfully",
                 data={
                     "updated_values": updated_vals
                 },

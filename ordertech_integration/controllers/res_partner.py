@@ -21,6 +21,7 @@ class ResPartner(http.Controller):
             )
         try:
             customers = request.env['res.partner'].sudo().search([('customer_rank', '>', 0)])
+            base_url = request.env['ir.config_parameter'].sudo().get_param('web.base.url')
             customer_list = [{
                 "id": c.id,
                 "name": c.name,
@@ -43,7 +44,9 @@ class ResPartner(http.Controller):
 
             return valid_response(
                 message="Success",
-                data={'customers': customer_list},
+                data={'webhookUrl':f"{base_url}/api/v1/webhooks/ordertech/customerId",
+                    'customers': customer_list
+                },
             )
 
         except Exception as e:
@@ -67,7 +70,7 @@ class ResPartner(http.Controller):
             return invalid_response(
                 error=f"invalid Json type : {str(e)}"
             )
-        required_fields = ['ordertech_customer_id', 'name']
+        required_fields = ['ordertech_customerId', 'name']
         missing_fields = [field for field in required_fields if not vals.get(field)]
 
         if missing_fields:
@@ -115,7 +118,7 @@ class ResPartner(http.Controller):
                 return invalid_response(error="'latitude' must be a float")
 
         customer_vals = {
-            "ordertech_customer_id": vals['ordertech_customer_id'],
+            "ordertech_customerId": vals['ordertech_customerId'],
             "name": vals['name'],
             "phone": vals.get("phone"),
             "mobile": vals.get("mobile"),
@@ -136,7 +139,7 @@ class ResPartner(http.Controller):
                     message="Customer created successfully",
                     data={
                         "odoo_customer_id": customer.id,
-                        "ordertech_customer_id": customer.ordertech_customer_id
+                        "ordertech_customerId": customer.ordertech_customerId
                     },
                     status=201
                 )
@@ -213,7 +216,6 @@ class ResPartner(http.Controller):
 
 
         update_vals = {
-            "ordertech_customer_id": vals.get('ordertech_customer_id'),
             "name": vals.get("name"),
             "phone": vals.get("phone"),
             "mobile": vals.get("mobile"),
@@ -237,12 +239,58 @@ class ResPartner(http.Controller):
                 message="Customer updated successfully",
                 data={
                     "odoo_customer_id": customer.id,
-                    "ordertech_customer_id": customer.ordertech_customer_id,
+                    "ordertech_customerId": customer.ordertech_customerId,
                     "updated_values": update_vals
                 },
                 status=200
             )
 
+        except Exception as e:
+            _logger.exception("Error updating customer from API")
+            return invalid_response(
+                error=str(e),
+                status=400
+            )
+
+    @http.route('/api/v1/webhooks/ordertech/customerId', methods=["PUT"], type='http', auth='none', csrf=False)
+    def update_customerId(self, *kwargs):
+        if not check_api_key():
+            return invalid_response(
+                error='Unauthorized',
+                status=401
+            )
+        try:
+            args = request.httprequest.data.decode()
+            vals = json.loads(args)
+        except Exception as e:
+            return invalid_response(
+                error=f"invalid Json type : {str(e)}"
+            )
+        required_fields = ['odoo_customer_id', 'ordertech_customerId']
+        missing_fields = [field for field in required_fields if not vals.get(field)]
+
+        if missing_fields:
+            return invalid_response(
+                error=f"Missing required field(s): {', '.join(missing_fields)}"
+            )
+        customer = request.env['res.partner'].sudo().browse(vals.get('odoo_customer_id')).exists()
+        if not customer:
+            return invalid_response(
+                error="customer not found",
+                status=404
+            )
+        updated_vals = {
+            "ordertech_customerId": vals.get('ordertech_customerId')
+        }
+        try:
+            customer.sudo().write(updated_vals)
+            return valid_response(
+                message="customer updated ordertech_cusotmerId successfully",
+                data={
+                    "updated_values": updated_vals
+                },
+                status=200
+            )
         except Exception as e:
             _logger.exception("Error updating customer from API")
             return invalid_response(
