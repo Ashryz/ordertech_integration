@@ -30,6 +30,7 @@ class ResPartner(http.Controller):
                 "email": c.email,
                 "tags": [t.name for t in c.category_id],
                 "company_id": [c.company_id.id, c.company_id.name] if c.company_id else None,
+                "ordertech_tenantId": c.ordertech_tenantId,
                 "address": {
                     "street": c.street,
                     "city": c.city,
