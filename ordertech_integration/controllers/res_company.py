@@ -78,7 +78,7 @@ class ResCompany(http.Controller):
                 status=404
             )
         updated_vals = {
-            "ordertech_tenant_id": vals.get('ordertech_tenantId')
+            "ordertech_tenantId": vals.get('ordertech_tenantId')
         }
         try:
             restaurant.sudo().write(updated_vals)

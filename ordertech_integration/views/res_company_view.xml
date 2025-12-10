@@ -22,12 +22,12 @@
                     </group>
                     <group>
                         <group>
-                            <field name="ordertech_tenant_id" string="OrderTech Tenants ID" readonly="1"
-                                   invisible="not ordertech_tenant_id"/>
+                            <field name="ordertech_tenantId" stirng="OrderTech TenantId" readonly="1"
+                                   invisible="not ordertech_tenantId"/>
                         </group>
                         <group>
-                            <field name="ordertech_tenant_branch_id" string="OrderTech Tenants Branch ID" readonly="1"
-                                   invisible="not ordertech_tenant_branch_id"/>
+                            <field name="ordertech_tenant_branchId" string="OrderTech BranchId" readonly="1"
+                                   invisible="not ordertech_tenant_branchId"/>
                         </group>
                     </group>
                 </page>
