@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-
 {
     'name': "OrderTech Integration",
 
@@ -13,13 +12,18 @@
 
     'depends': [
         'base',
-        'base_geolocalize'
+        'base_geolocalize',
+        'point_of_sale',
 
     ],
     'data': [
         'security/ir.model.access.csv',
         'data/ordertech_configration.xml',
-        'views/ordertech_view.xml',
+        'views/ordertech_config_view.xml',
+        'views/ordertech_restaurant_view.xml',
+        'views/ordertech_branch_view.xml',
+        'views/ordertech_customer_view.xml',
+        'views/ordertech_menu_view.xml',
         'views/res_company_view.xml',
         'views/res_partner_view.xml',
     ],

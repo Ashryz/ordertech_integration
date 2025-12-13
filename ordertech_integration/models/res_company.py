@@ -1,6 +1,6 @@
 import json
 
-from odoo import models, fields, api
+from odoo import models, fields, api, _
 import requests
 
 from odoo.exceptions import UserError
@@ -15,8 +15,8 @@ class ResCompany(models.Model):
     notes = fields.Char()
     slug = fields.Char()
     delivery_radius_km = fields.Integer()
-    open_time = fields.Float(string='Opening Time')
-    close_time = fields.Float(string='Closing Time')
+    opening_time = fields.Float()
+    closing_time = fields.Float()
     ordertech_tenantId = fields.Char()
     ordertech_tenant_branchId = fields.Char()
 
@@ -35,20 +35,27 @@ class ResCompany(models.Model):
         minutes = int(round((time_float - hours) * 60))
         return f"{hours:02d}:{minutes:02d}"
 
-    @api.model_create_multi
-    def create(self, vals_list):
-        companies = super(ResCompany, self).create(vals_list)
-        for company in companies:
-            if company.is_restaurant:
-                company.create_tenant_api()
-            if company.is_branch and company.parent_id:
-                company.create_branch_api()
-        return companies
-
+    # @api.model_create_multi
+    # def create(self, vals_list):
+    #     companies = super(ResCompany, self).create(vals_list)
+    #     for company in companies:
+    #         if company.is_restaurant:
+    #             company.create_tenant_api()
+    #         if company.is_branch and company.parent_id:
+    #             company.create_branch_api()
+    #     return companies
+    def sync_data_to_ordertech(self):
+        for rec in self:
+            if rec.is_restaurant and not rec.ordertech_tenantId:
+                rec.create_tenant_api()
+            elif rec.is_branch and rec.parent_id and  not rec.ordertech_tenant_branchId:
+                rec.create_branch_api()
+            else:
+                raise UserError("There is not data to sync")
     def create_tenant_api(self):
         instance = self.env.ref("ordertech_integration.default_ordertech_instance")
         base_url = request.env['ir.config_parameter'].sudo().get_param('web.base.url')
-        if not instance:
+        if not instance or not instance.exp_token:
             raise UserError("OrderTech instance is missing.")
         for company in self:
             url = f"{instance.url}/api/tenants"
@@ -57,8 +64,8 @@ class ResCompany(models.Model):
                 "name": company.name,
                 "phone": company.phone,
                 "email": company.email,
-                "openingTime": self.float_to_hhmm(company.open_time),
-                "closingTime": self.float_to_hhmm(company.close_time),
+                "openingTime": self.float_to_hhmm(company.opening_time),
+                "closingTime": self.float_to_hhmm(company.closing_time),
                 # "tax_id": company.vat,
                 # "logo": f"{base_url}/web/image/res.company/{company.id}/logo" if company.logo else None,
                 # "website": company.website,
@@ -93,7 +100,7 @@ class ResCompany(models.Model):
 
     def create_branch_api(self):
         instance = self.env.ref("ordertech_integration.default_ordertech_instance")
-        if not instance:
+        if not instance or not instance.exp_token:
             raise UserError("OrderTech instance is missing.")
         for company in self:
             if not company.parent_id.ordertech_tenantId:
@@ -115,8 +122,8 @@ class ResCompany(models.Model):
                 "email": company.email,
                 "deliveryRadiusKm": company.delivery_radius_km,
                 "notes": company.notes,
-                "openingTime": self.float_to_hhmm(company.open_time),
-                "closingTime": self.float_to_hhmm(company.close_time)
+                "openingTime": self.float_to_hhmm(company.opening_time),
+                "closingTime": self.float_to_hhmm(company.closing_time)
             })
             headers = {
                 'accept': '*/*',
@@ -145,19 +152,19 @@ class ResCompany(models.Model):
             else:
                 raise UserError(f"Tenant Branch create failed: {response.status_code} - {response.text}")
 
-    def write(self, vals):
-        res = super(ResCompany, self).write(vals)
-        tenant_tracked_fields = {"name", "phone", "email", "open_time", "close_time"}
-        branch_tracked_fields = {"name", "phone", "email", "open_time", "close_time", "slug", "street", "street2",
-                                 "state_id", "city", "zip", "delivery_radius_km", "notes"}
-        for company in self:
-            if company.is_restaurant:
-                if any(field in vals for field in tenant_tracked_fields):
-                    company.update_tenant_api()
-            if company.is_branch and company.parent_id:
-                if any(field in vals for field in branch_tracked_fields):
-                    company.update_branch_api()
-        return res
+    # def write(self, vals):
+    #     res = super(ResCompany, self).write(vals)
+    #     tenant_tracked_fields = {"name", "phone", "email", "opening_time", "closing_time"}
+    #     branch_tracked_fields = {"name", "phone", "email", "opening_time", "closing_time", "slug", "street", "street2",
+    #                              "state_id", "city", "zip", "delivery_radius_km", "notes"}
+    #     for company in self:
+    #         if company.is_restaurant:
+    #             if any(field in vals for field in tenant_tracked_fields):
+    #                 company.update_tenant_api()
+    #         if company.is_branch and company.parent_id:
+    #             if any(field in vals for field in branch_tracked_fields):
+    #                 company.update_branch_api()
+    #     return res
 
     def update_tenant_api(self):
         instance = self.env.ref("ordertech_integration.default_ordertech_instance")
@@ -172,8 +179,8 @@ class ResCompany(models.Model):
                 "name": company.name,
                 "phone": company.phone,
                 "email": company.email,
-                "openingTime": self.float_to_hhmm(company.open_time),
-                "closingTime": self.float_to_hhmm(company.close_time),
+                "openingTime": self.float_to_hhmm(company.opening_time),
+                "closingTime": self.float_to_hhmm(company.closing_time),
             })
             headers = {
                 'accept': '*/*',
@@ -222,8 +229,8 @@ class ResCompany(models.Model):
                 "email": company.email,
                 "deliveryRadiusKm": company.delivery_radius_km,
                 "notes": company.notes,
-                "openingTime": self.float_to_hhmm(company.open_time),
-                "closingTime": self.float_to_hhmm(company.close_time)
+                "openingTime": self.float_to_hhmm(company.opening_time),
+                "closingTime": self.float_to_hhmm(company.closing_time)
             })
             headers = {
                 'accept': '*/*',
@@ -247,3 +254,17 @@ class ResCompany(models.Model):
                     return True
             else:
                 raise UserError(f"Tenant Branch update failed: {response.status_code} - {response.text}")
+
+    def action_all_company_branches(self):
+        self.ensure_one()
+        return {
+            'type': 'ir.actions.act_window',
+            'name': _('Branches'),
+            'res_model': 'res.company',
+            'domain': [('parent_id', '=', self.id)],
+            'context': {
+                'active_test': False,
+                'default_parent_id': self.id,
+            },
+            'views': [[self.env.ref('base.view_company_tree').id, 'list'], [False, 'kanban'], [False, 'form']],
+        }

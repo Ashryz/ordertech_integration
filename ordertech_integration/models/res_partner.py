@@ -18,14 +18,19 @@ class ResPartner(models.Model):
         if not defaults.get('parent_id'):
             defaults['company_id'] = self.env.company.id
         return defaults
-
-    @api.model_create_multi
-    def create(self, vals_list):
-        partners = super(ResPartner, self).create(vals_list)
-        for partner in partners:
-            if partner.company_id and partner.company_id.is_restaurant:
-                partner.create_tenant_customer_api()
-        return partners
+    def sync_data_to_ordertech(self):
+        for rec in self:
+            if rec.company_id and rec.company_id.is_restaurant and not rec.ordertech_customerId:
+                rec.create_tenant_customer_api()
+            else:
+                raise UserError("There is not data to sync")
+    # @api.model_create_multi
+    # def create(self, vals_list):
+    #     partners = super(ResPartner, self).create(vals_list)
+    #     for partner in partners:
+    #         if partner.company_id and partner.company_id.is_restaurant:
+    #             partner.create_tenant_customer_api()
+    #     return partners
 
     def create_tenant_customer_api(self):
         instance = self.env.ref("ordertech_integration.default_ordertech_instance")
@@ -40,7 +45,7 @@ class ResPartner(models.Model):
                 "phone_e164": partner.phone,
                 "email": partner.email,
                 "language": partner.lang,
-                "notes": BeautifulSoup(partner.comment, "html.parser").get_text().strip(),
+                "notes": BeautifulSoup(partner.comment, "html.parser").get_text().strip() if partner.comment else None,
             })
             headers = {
                 'accept': '*/*',
@@ -71,14 +76,14 @@ class ResPartner(models.Model):
             else:
                 raise UserError(f"Tenant Customer create failed: {response.status_code} - {response.text}")
 
-    def write(self, vals):
-        res = super(ResPartner, self).write(vals)
-        partner_tracked_fields = {"name", "phone", "email", "lang", "notes"}
-        for partner in self:
-            if partner.company_id and partner.company_id.is_restaurant:
-                if any(field in vals for field in partner_tracked_fields):
-                    partner.update_tenant_customer_api()
-        return res
+    # def write(self, vals):
+    #     res = super(ResPartner, self).write(vals)
+    #     partner_tracked_fields = {"name", "phone", "email", "lang", "notes"}
+    #     for partner in self:
+    #         if partner.company_id and partner.company_id.is_restaurant:
+    #             if any(field in vals for field in partner_tracked_fields):
+    #                 partner.update_tenant_customer_api()
+    #     return res
 
     def update_tenant_customer_api(self):
         instance = self.env.ref("ordertech_integration.default_ordertech_instance")
@@ -93,7 +98,7 @@ class ResPartner(models.Model):
                 "phone_e164": partner.phone,
                 "email": partner.email,
                 "language": partner.lang,
-                "notes": BeautifulSoup(partner.comment, "html.parser").get_text().strip(),
+                "notes": BeautifulSoup(partner.comment, "html.parser").get_text().strip() if partner.comment else None,
             })
             headers = {
                 'accept': '*/*',
