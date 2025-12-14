@@ -5,11 +5,11 @@
         <field name="model">addons.group</field>
         <field name="arch" type="xml">
             <search>
-                <filter name="addons_to_sync" string="To-Sync" domain="[('ordertech_addonsId','=',False)]"/>
+                <filter name="addons_to_sync" string="To-Sync" domain="[('ordertech_groupId','=',False)]"/>
             </search>
         </field>
     </record>
-    <record id="addons_item_search_view" model="ir.ui.view">
+    <record id="ordertech_addons_item_search_view" model="ir.ui.view">
         <field name="name">addons.item.search.view</field>
         <field name="model">product.template</field>
         <field name="arch" type="xml">
@@ -29,7 +29,7 @@
                         <group>
                             <field name="name"/>
                             <field name="company_id"/>
-                            <field name="ordertech_addonsId" readonly="1" invisible="not ordertech_addonsId"/>
+                            <field name="ordertech_groupId" readonly="1" invisible="not ordertech_groupId"/>
                         </group>
                         <group>
                             <field name="slug"/>
@@ -51,13 +51,13 @@
                 </header>
                 <field name="name"/>
                 <field name="company_id" string="Restaurant"/>
-                <field name="ordertech_addonsId" string="OrderTech AddonsId"/>
+                <field name="ordertech_groupId" string="OrderTech GroupId"/>
                 <field name="limit_min"/>
                 <field name="limit_max"/>
             </list>
         </field>
     </record>
-    <record id="addon_item_tree_view" model="ir.ui.view">
+    <record id="ordertech_addon_item_tree_view" model="ir.ui.view">
         <field name="name">addons.item.view.tree</field>
         <field name="model">product.template</field>
         <field name="arch" type="xml">
@@ -67,7 +67,7 @@
                 </header>
                 <field name="name"/>
                 <field name="company_id" string="Restaurant"/>
-                <field name="ordertech_itemId" string="OrderTech itemId"/>
+                <field name="ordertech_itemId" string="OrderTech ItemId"/>
             </list>
         </field>
     </record>
@@ -86,10 +86,10 @@
     <record id="ordertech_addons_item_action" model="ir.actions.act_window">
         <field name="name">Addons-item</field>
         <field name="res_model">product.template</field>
-        <field name="view_mode">list</field>
-        <field name="view_id" ref="addon_item_tree_view"/>
-        <field name="search_view_id" ref="addons_item_search_view"/>
-        <field name="domain">[('pos_categ_ids','ilike','addons'),('available_in_pos','=',True)]</field>
+        <field name="view_mode">list,form</field>
+        <field name="view_id" ref="ordertech_addon_item_tree_view"/>
+        <field name="search_view_id" ref="ordertech_addons_item_search_view"/>
+        <field name="domain">[('is_addons','=','True'),('available_in_pos','=',True)]</field>
         <field name="context">{'search_default_item_to_sync':1}</field>
         <field name="help" type="html">
             <p class="o_view_nocontent_smiling_face">
@@ -99,7 +99,7 @@
     </record>
     <menuitem id="ordertech_addons_menu"
               name="Addons-Group"
-              sequence="2"
+              sequence="3"
               parent="ordertech_menu_root_menu"/>
     <menuitem id="ordertech_groups_menu"
               name="Groups"

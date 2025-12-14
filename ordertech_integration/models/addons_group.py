@@ -15,11 +15,11 @@ class AddonsGroup(models.Model):
     slug = fields.Char()
     limit_min = fields.Integer()
     limit_max = fields.Integer()
-    ordertech_addonsId = fields.Char()
+    ordertech_groupId = fields.Char()
 
     def sync_data_to_ordertech(self):
         for rec in self:
-            if rec.company_id and not rec.ordertech_addonsId:
+            if rec.company_id and not rec.ordertech_groupId:
                 rec.create_ordertech_addons_group()
             else:
                 raise UserError("There is not data to sync")
@@ -53,7 +53,7 @@ class AddonsGroup(models.Model):
                 raise UserError(str(e))
             if response.status_code == 201:
                 response_data = response.json()
-                group.ordertech_addonsId = response_data.get("id")
+                group.ordertech_groupId = response_data.get("id")
             elif response.status_code == 401:
                 instance.refresh_tokens()
                 headers['Authorization'] = f'Bearer {instance.exp_token}'
@@ -63,6 +63,6 @@ class AddonsGroup(models.Model):
                     raise UserError(str(e))
                 if response.status_code == 201:
                     response_data = response.json()
-                    group.ordertech_addonsId = response_data.get("id")
+                    group.ordertech_groupId = response_data.get("id")
             else:
                 raise UserError(f"Tenant Addons-group create failed: {response.status_code} - {response.text}")

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<odoo>
+    <record id="product_template_form_view_inherit" model="ir.ui.view">
+        <field name="name">product.template.form.view.inherit</field>
+        <field name="model">product.template</field>
+        <field name="inherit_id" ref="point_of_sale.product_template_form_view"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='pos_categ_ids']" position="after">
+                <field name="ordertech_productId" readonly="1" invisible="not ordertech_productId"/>
+                <field name="is_addons" invisible="0"/>
+                <field name="ordertech_group_id" options="{'no_create':1}" invisible="not is_addons" domain="[('ordertech_groupId','!=',False)]"/>
+                <field name="ordertech_itemId" readonly="1" invisible="not ordertech_itemId"/>
+            </xpath>
+        </field>
+    </record>
+</odoo>
