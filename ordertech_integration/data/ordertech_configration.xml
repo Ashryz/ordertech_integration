@@ -4,4 +4,7 @@
         <field name="name">OrderTech Integration</field>
         <field name="url">https://ordertech.ai</field>
     </record>
+    <record id="addon_item_pos_category" model="pos.category">
+        <field name="name">addons</field>
+    </record>
 </odoo>

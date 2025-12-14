@@ -24,6 +24,7 @@
         'views/ordertech_branch_view.xml',
         'views/ordertech_customer_view.xml',
         'views/ordertech_menu_view.xml',
+        'views/ordertech_addons_group_view.xml',
         'views/res_company_view.xml',
         'views/res_partner_view.xml',
     ],

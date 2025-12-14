@@ -1,5 +1,14 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <odoo>
+        <record id="ordertech_customer_view_search" model="ir.ui.view">
+        <field name="name">ordertech.customer.view.search</field>
+        <field name="model">res.partner</field>
+        <field name="arch" type="xml">
+            <search>
+                <filter name="to_sync_customer" string="To-Sync" domain="[('ordertech_customerId','=',False)]"/>
+            </search>
+        </field>
+    </record>
     <record id="ordertech_customer_tree_view" model="ir.ui.view">
         <field name="name">ordertech.customer.tree.view</field>
         <field name="model">res.partner</field>
@@ -21,11 +30,12 @@
         <field name="res_model">res.partner</field>
         <field name="view_mode">list,form</field>
         <field name="domain">[('customer_rank','>',0)]</field>
-        <field name="context">{'default_customer_rank': 1}</field>
+        <field name="context">{'default_customer_rank': 1,'search_default_to_sync_customer':1}</field>
         <field name="view_id" ref="ordertech_customer_tree_view"/>
+        <field name="search_view_id" ref="ordertech_customer_view_search"/>
         <field name="help" type="html">
             <p class="o_view_nocontent_smiling_face">
-                Create a new customer!
+                 No Data to sync Found!
             </p>
         </field>
     </record>

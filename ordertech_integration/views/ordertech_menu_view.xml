@@ -1,5 +1,14 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <odoo>
+    <record id="product_pos_category_search_view_inherit" model="ir.ui.view">
+        <field name="name">product.pos.category.search.view.inherit</field>
+        <field name="model">pos.category</field>
+        <field name="arch" type="xml">
+            <search>
+              <filter name="categ_to_sync" string="To-Sync" domain="[('ordertech_categId','=', False)]"/>
+            </search>
+        </field>
+    </record>
     <record id="product_pos_category_form_view_inherit" model="ir.ui.view">
         <field name="name">product.pos.category.form.view.inherit</field>
         <field name="model">pos.category</field>
@@ -7,6 +16,7 @@
         <field name="arch" type="xml">
             <xpath expr="//group/field[@name='parent_id']" position="before">
                 <field name="company_id"/>
+                <field name="ordertech_categId" readonly="1" invisible="not ordertech_categId"/>
             </xpath>
         </field>
     </record>
@@ -16,12 +26,13 @@
         <field name="inherit_id" ref="point_of_sale.product_pos_category_tree_view"/>
         <field name="arch" type="xml">
             <xpath expr="//field[@name='sequence']" position="before">
-                 <header>
+                <header>
                     <button name="sync_data_to_ordertech" string="Sync OrderTech" type="object"/>
                 </header>
             </xpath>
             <xpath expr="//field[@name='display_name']" position="after">
-                <field name="company_id"/>
+                <field name="company_id" string="Restaurant"/>
+                <field name="ordertech_categId" string="OrderTech CategoryId"/>
             </xpath>
         </field>
     </record>
@@ -29,9 +40,11 @@
         <field name="name">Categories</field>
         <field name="res_model">pos.category</field>
         <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="product_pos_category_search_view_inherit"/>
+        <field name="context">{'search_default_categ_to_sync':1}</field>
         <field name="help" type="html">
             <p class="o_view_nocontent_smiling_face">
-                Create a new Category!
+                No Data to sync Found!
             </p>
         </field>
     </record>
