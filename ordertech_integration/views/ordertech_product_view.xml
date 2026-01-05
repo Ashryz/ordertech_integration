@@ -1,45 +1,21 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <odoo>
-    <record id="ordertech_product_search_view" model="ir.ui.view">
-        <field name="name">ordertech.product.search.view</field>
-        <field name="model">product.template</field>
-        <field name="arch" type="xml">
-            <search>
-                <filter name="product_to_sync" string="To-Sync" domain="[('ordertech_productId','=',False)]"/>
-            </search>
-        </field>
-    </record>
-    <record id="ordertech_product_tree_view" model="ir.ui.view">
-        <field name="name">ordertech.product.tree.view</field>
-        <field name="model">product.template</field>
-        <field name="arch" type="xml">
-            <list create="0">
-                <header>
-                    <button name="sync_data_to_ordertech" string="Sync OrderTech" type="object"/>
-                </header>
-                <field name="name"/>
-                <field name="company_id" string="Restaurant"/>
-                <field name="ordertech_productId" string="OrderTech ProductId"/>
-            </list>
-        </field>
-    </record>
-    <record id="ordertech_product_action" model="ir.actions.act_window">
-         <field name="name">Products</field>
+    <record id="ordertech_menu_product_action" model="ir.actions.act_window">
+        <field name="name">Products</field>
         <field name="res_model">product.template</field>
         <field name="view_mode">list,form</field>
-        <field name="view_id" ref="ordertech_product_tree_view"/>
-        <field name="search_view_id" ref="ordertech_product_search_view"/>
-        <field name="domain">[('available_in_pos','=',True),("type", "=", "consu"),('is_addons','=',False)]</field>
-        <field name="context">{'search_default_product_to_sync':1}</field>
+        <field name="domain">[('ordertech_productId','!=',False)]</field>
+        <field name="context">{'create':False}</field>
         <field name="help" type="html">
             <p class="o_view_nocontent_smiling_face">
-                No Data to sync Found!
+                No Synced Product Found!
             </p>
         </field>
     </record>
-    <menuitem id="ordertech_product_menu"
+
+    <menuitem id="ordertech_menu_products_menu"
               name="Products"
-              parent="ordertech_menu_root_menu"
               sequence="2"
-              action="ordertech_product_action"/>
+              parent="ordertech_menu_menu_root"
+              action="ordertech_menu_product_action"/>
 </odoo>

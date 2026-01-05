@@ -1,41 +1,21 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <odoo>
-    <record id="ordertech_branch_view_tree" model="ir.ui.view">
-        <field name="name">ordertech.branch.view.tree</field>
-        <field name="model">res.company</field>
-        <field name="arch" type="xml">
-            <list create="0">
-                <header>
-                    <button name="sync_data_to_ordertech" string="Sync OrderTech" type="object"/>
-                </header>
-                <field name="name" string="Branch"/>
-                <field name="parent_id" string="Restaurant"/>
-                <field name="ordertech_tenant_branchId" string="Tenant BranchId"/>
-                <field name="opening_time" widget="float_time"/>
-                <field name="closing_time" widget="float_time"/>
-            </list>
-        </field>
-    </record>
-
     <record id="ordertech_branch_action" model="ir.actions.act_window">
         <field name="name">Branches</field>
         <field name="res_model">res.company</field>
-        <field name="view_mode">list</field>
-        <field name="view_id" ref="ordertech_branch_view_tree"/>
-        <field name="search_view_id" ref="ordertech_restaurant_view_search"/>
-        <field name="domain">[('is_branch','=',True)]</field>
-        <field name="context">{'search_default_to_sync_branch':1}</field>
+        <field name="view_mode">list,form</field>
+        <field name="domain">[('is_branch','=',True),('ordertech_tenant_branchId','!=',False)]</field>
+        <field name="context">{'create':False}</field>
         <field name="help" type="html">
             <p class="o_view_nocontent_smiling_face">
-                 No Data to sync Found!
+                No Synced Branch Found!
             </p>
         </field>
     </record>
 
     <menuitem id="ordertech_branch_menu"
-              name="Branches"
-              sequence="3"
+              name="Branch"
+              sequence="2"
               parent="ordertech_restaurant_menu_root"
               action="ordertech_branch_action"/>
-
 </odoo>

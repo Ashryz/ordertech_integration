@@ -1,10 +1,34 @@
 import json
+import logging
 
-from odoo import models, fields, api, _
 import requests
 
-from odoo.exceptions import UserError
-from odoo.http import request
+from odoo import models, fields, api
+from odoo.exceptions import UserError, ValidationError
+
+_logger = logging.getLogger(__name__)
+
+TENANT_TRACKED_FIELDS = {
+    "name",
+    "phone",
+    "email",
+    "opening_time",
+    "closing_time",
+}
+BRANCH_TRACKED_FIELDS = {
+    "name",
+    "phone",
+    "email",
+    "street",
+    "street2",
+    "city",
+    "state_id",
+    "zip",
+    "delivery_radius_km",
+    "notes"
+    "opening_time",
+    "closing_time",
+}
 
 
 class ResCompany(models.Model):
@@ -12,259 +36,248 @@ class ResCompany(models.Model):
 
     is_restaurant = fields.Boolean()
     is_branch = fields.Boolean()
-    notes = fields.Char()
-    slug = fields.Char()
-    delivery_radius_km = fields.Integer()
     opening_time = fields.Float()
     closing_time = fields.Float()
     ordertech_tenantId = fields.Char()
     ordertech_tenant_branchId = fields.Char()
+    delivery_radius_km = fields.Integer(default=1)
+    notes = fields.Char()
 
     @api.onchange('parent_id')
     def check_branch(self):
         for rec in self:
-            if rec.parent_id:
-                rec.is_branch = True
-            else:
-                rec.is_branch = False
+            rec.is_branch = True if rec.parent_id else False
 
-    def float_to_hhmm(self, time_float):
+    @api.constrains('opening_time', 'closing_time')
+    def _check_time_range(self):
+        for record in self:
+            for field_name in ['opening_time', 'closing_time']:
+                value = getattr(record, field_name)
+                if value < 0 or value >= 24:
+                    raise ValidationError("Time must be between 00:00 and 23:59.")
+
+    def float_to_time(self, time_float):
         if time_float is None:
             return "00:00"
         hours = int(time_float)
         minutes = int(round((time_float - hours) * 60))
         return f"{hours:02d}:{minutes:02d}"
 
-    # @api.model_create_multi
-    # def create(self, vals_list):
-    #     companies = super(ResCompany, self).create(vals_list)
-    #     for company in companies:
-    #         if company.is_restaurant:
-    #             company.create_tenant_api()
-    #         if company.is_branch and company.parent_id:
-    #             company.create_branch_api()
-    #     return companies
-    def sync_data_to_ordertech(self):
-        for rec in self:
-            if rec.is_restaurant and not rec.ordertech_tenantId:
-                rec.create_tenant_api()
-            elif rec.is_branch and rec.parent_id and  not rec.ordertech_tenant_branchId:
-                rec.create_branch_api()
-            else:
-                raise UserError("There is not data to sync")
-    def create_tenant_api(self):
-        instance = self.env.ref("ordertech_integration.default_ordertech_instance")
-        base_url = request.env['ir.config_parameter'].sudo().get_param('web.base.url')
-        if not instance or not instance.exp_token:
+    def time_to_float(self, time_str):
+        if not time_str:
+            return 0.0
+        hours, minutes = map(int, time_str.split(":"))
+        return hours + (minutes / 60.0)
+
+    def sync_ordertech_restaurant(self):
+        instance = self.env.ref('ordertech_integration.default_ordertech_instance')
+        if not instance or not instance.ordertech_token:
             raise UserError("OrderTech instance is missing.")
         for company in self:
-            url = f"{instance.url}/api/tenants"
-            payload = json.dumps({
-                # "odoo_company_id": company.id,
-                "name": company.name,
-                "phone": company.phone,
-                "email": company.email,
-                "openingTime": self.float_to_hhmm(company.opening_time),
-                "closingTime": self.float_to_hhmm(company.closing_time),
-                # "tax_id": company.vat,
-                # "logo": f"{base_url}/web/image/res.company/{company.id}/logo" if company.logo else None,
-                # "website": company.website,
-                # "default_currency": company.currency_id.name,
-                # "country_code": company.country_code
-
-            })
+            url = f"{instance.url}/api/tenants/my-restaurants"
             headers = {
                 'accept': '*/*',
-                'Content-Type': 'application/json',
-                'Authorization': f'Bearer {instance.exp_token}'
+                'Authorization': f'Bearer {instance.ordertech_token}'
             }
             try:
-                response = requests.request("POST", url, headers=headers, data=payload)
+                response = requests.request("GET", url, headers=headers)
+                if response.status_code != 200:
+                    _logger.warning("OrderTech API returned  %s for company %s", response.text, company.id)
+                response = response.json()
+                if not response:
+                    _logger.warning("OrderTech API returned an empty restaurant list")
+                    return
+                data = response[0]  # get first restaurant
+                opening_time = self.time_to_float(data.get('opening_time', '00:00'))
+                closing_time = self.time_to_float(data.get('closing_time', '00:00'))
+                company.sudo().write({
+                    'is_restaurant': True,
+                    'ordertech_tenantId': data.get('id'),
+                    'name': data.get('name_display'),
+                    'phone': data.get('phone'),
+                    'email': data.get('email'),
+                    'opening_time': opening_time,
+                    'closing_time': closing_time,
+                })
+                _logger.info("Successfully synced restaurant data for company %s", company.id)
+            except requests.RequestException as req_e:
+                _logger.error("Request error syncing company %s: %s", company.id, req_e, exc_info=True)
             except Exception as e:
-                raise UserError(str(e))
-            if response.status_code == 201:
-                response_data = response.json()
-                company.ordertech_tenantId = response_data.get("id")
-            elif response.status_code == 401:
-                instance.refresh_tokens()
-                headers['Authorization'] = f'Bearer {instance.exp_token}'
-                try:
-                    response = requests.request("POST", url, headers=headers, data=payload)
-                except Exception as e:
-                    raise UserError(str(e))
-                if response.status_code == 201:
-                    response_data = response.json()
-                    company.ordertech_tenantId = response_data.get("id")
-            else:
-                raise UserError(f"Tenant create failed: {response.status_code} - {response.text}")
+                _logger.error("Unexpected error syncing company %s: %s", company.id, e, exc_info=True)
 
-    def create_branch_api(self):
-        instance = self.env.ref("ordertech_integration.default_ordertech_instance")
-        if not instance or not instance.exp_token:
-            raise UserError("OrderTech instance is missing.")
-        for company in self:
-            if not company.parent_id.ordertech_tenantId:
-                raise UserError("Parent Restaurant has no linked OrderTech tenant (ordertech_tenantId).")
-            url = f"{instance.url}/api/branches"
-            payload = json.dumps({
-                "name": company.name,
-                "slug": company.slug,
-                "tenantId": company.parent_id.ordertech_tenantId,
-                "status": "open",
-                "timezone": self.env.context.get('tz'),
-                "addressLine1": company.street,
-                "addressLine2": company.street2,
-                "city": company.state_id.name,
-                "region": company.city,
-                "postalCode": company.zip,
-                "countryCode": company.country_code,
-                "phonePublic": company.phone,
-                "email": company.email,
-                "deliveryRadiusKm": company.delivery_radius_km,
-                "notes": company.notes,
-                "openingTime": self.float_to_hhmm(company.opening_time),
-                "closingTime": self.float_to_hhmm(company.closing_time)
-            })
-            headers = {
-                'accept': '*/*',
-                'Content-Type': 'application/json',
-                'Authorization': f'Bearer {instance.exp_token}'
-            }
-            try:
-                response = requests.request("POST", url, headers=headers, data=payload)
-            except Exception as e:
-                raise UserError(str(e))
-            if response.status_code == 201:
-                response_data = response.json()
-                company.ordertech_tenant_branchId = response_data.get("id")
-                company.ordertech_tenantId = response_data.get("tenantId")
-            elif response.status_code == 401:
-                instance.refresh_tokens()
-                headers['Authorization'] = f'Bearer {instance.exp_token}'
-                try:
-                    response = requests.request("POST", url, headers=headers, data=payload)
-                except Exception as e:
-                    raise UserError(str(e))
-                if response.status_code == 201:
-                    response_data = response.json()
-                    company.ordertech_tenant_branchId = response_data.get("id")
-                    company.ordertech_tenantId = response_data.get("tenantId")
-            else:
-                raise UserError(f"Tenant Branch create failed: {response.status_code} - {response.text}")
-
-    # def write(self, vals):
-    #     res = super(ResCompany, self).write(vals)
-    #     tenant_tracked_fields = {"name", "phone", "email", "opening_time", "closing_time"}
-    #     branch_tracked_fields = {"name", "phone", "email", "opening_time", "closing_time", "slug", "street", "street2",
-    #                              "state_id", "city", "zip", "delivery_radius_km", "notes"}
-    #     for company in self:
-    #         if company.is_restaurant:
-    #             if any(field in vals for field in tenant_tracked_fields):
-    #                 company.update_tenant_api()
-    #         if company.is_branch and company.parent_id:
-    #             if any(field in vals for field in branch_tracked_fields):
-    #                 company.update_branch_api()
-    #     return res
+    def write(self, vals):
+        trigger_update_rest = bool(TENANT_TRACKED_FIELDS & vals.keys())
+        trigger_update_branch = bool(TENANT_TRACKED_FIELDS & vals.keys())
+        res = super(ResCompany, self).write(vals)
+        if trigger_update_rest:
+            companies = self.filtered(
+                lambda c: c.is_restaurant and c.ordertech_tenantId
+            )
+            companies.update_tenant_api()
+        if trigger_update_branch:
+            branches = self.filtered(
+                lambda b: b.is_branch and b.parent_id.ordertech_tenantId and b.ordertech_tenant_branchId
+            )
+            branches.update_tenant_branch_api()
+        return res
 
     def update_tenant_api(self):
         instance = self.env.ref("ordertech_integration.default_ordertech_instance")
-
-        if not instance:
-            raise UserError("OrderTech instance is missing.")
+        if not instance or not instance.ordertech_token:
+            _logger.error("OrderTech instance is missing.")
+            return False
         for company in self:
-            if not company.ordertech_tenantId:
-                raise UserError("This company has no linked OrderTech tenant (ordertech_tenantId).")
             url = f"{instance.url}/api/tenants/{company.ordertech_tenantId}"
-            payload = json.dumps({
-                "name": company.name,
-                "phone": company.phone,
-                "email": company.email,
-                "openingTime": self.float_to_hhmm(company.opening_time),
-                "closingTime": self.float_to_hhmm(company.closing_time),
-            })
             headers = {
                 'accept': '*/*',
                 'Content-Type': 'application/json',
-                'Authorization': f'Bearer {instance.exp_token}'
+                'Authorization': f'Bearer {instance.ordertech_token}'
             }
+            payload = json.dumps({
+                'name': company.name,
+                'email': company.email,
+                'phone': company.phone,
+                'openingTime': company.float_to_time(company.opening_time),
+                'closingTime': company.float_to_time(company.closing_time),
+            })
             try:
-                response = requests.request("PUT", url, headers=headers, data=payload)
-            except Exception as e:
-                raise UserError(str(e))
-            if response.status_code == 200:
-                return True
-            elif response.status_code == 401:
-                instance.refresh_tokens()
-                headers['Authorization'] = f'Bearer {instance.exp_token}'
-                try:
-                    response = requests.request("POST", url, headers=headers, data=payload)
-                except Exception as e:
-                    raise UserError(str(e))
-                if response.status_code == 200:
-                    return True
-            else:
-                raise UserError(f"Tenant update failed: {response.status_code} - {response.text}")
+                response = requests.request("PUT", url, headers=headers, data=payload, timeout=10)
+                if response.status_code != 200:
+                    _logger.error(
+                        "OrderTech tenant sync failed for company %s: %s",
+                        company.id,response.text,
+                    )
+                _logger.info("Successfully synced restaurant update data for company %s", company.id)
+            except requests.exceptions.RequestException as e:
+                _logger.error(
+                    "OrderTech API request error for company %s : %s",
+                    company.id,
+                    str(e),
+                )
+        return True
 
-    def update_branch_api(self):
+    def update_tenant_branch_api(self):
         instance = self.env.ref("ordertech_integration.default_ordertech_instance")
-
-        if not instance:
-            raise UserError("OrderTech instance is missing.")
-        for company in self:
-            if not company.ordertech_tenant_branchId:
-                raise UserError("This company has no linked OrderTech tenant (ordertech_tenant_branchId).")
-            url = f"{instance.url}/api/branches/{company.ordertech_tenant_branchId}"
-            payload = json.dumps({
-                "name": company.name,
-                "slug": company.slug,
-                "status": "open",
-                "timezone":  self.env.context.get('tz'),
-                "addressLine1": company.street,
-                "addressLine2": company.street2,
-                "city": company.state_id.name,
-                "region": company.city,
-                "postalCode": company.zip,
-                "countryCode": company.country_code,
-                "phonePublic":company.phone,
-                "email": company.email,
-                "deliveryRadiusKm": company.delivery_radius_km,
-                "notes": company.notes,
-                "openingTime": self.float_to_hhmm(company.opening_time),
-                "closingTime": self.float_to_hhmm(company.closing_time)
-            })
+        if not instance or not instance.ordertech_token:
+            _logger.error("OrderTech instance is missing.")
+            return False
+        for branch in self:
+            url = f"{instance.url}/api/branches/{branch.ordertech_tenant_branchId}"
             headers = {
                 'accept': '*/*',
                 'Content-Type': 'application/json',
-                'Authorization': f'Bearer {instance.exp_token}'
+                'Authorization': f'Bearer {instance.ordertech_token}'
             }
+            slugify = self.env['ir.http']._slugify
+            slug = slugify(branch.name)
+            timezone = self.env.context.get('tz')
+            payload = json.dumps({
+                "name": branch.name,
+                "slug": slug,
+                "status": "open",
+                "timezone": timezone,
+                "addressLine1": branch.street,
+                "addressLine2": branch.street2,
+                "city": branch.state_id.name,
+                "region": branch.city,
+                "postalCode": branch.zip,
+                "countryCode": branch.country_code,
+                "phonePublic": branch.phone,
+                "email": branch.email,
+                "deliveryRadiusKm": branch.delivery_radius_km,
+                "notes": branch.notes,
+                "openingTime": branch.float_to_time(branch.opening_time),
+                "closingTime": branch.float_to_time(branch.closing_time)
+            })
             try:
-                response = requests.request("PUT", url, headers=headers, data=payload)
+                response = requests.request("PUT", url, headers=headers, data=payload, timeout=10)
+                if response.status_code != 200:
+                    _logger.error(
+                        "OrderTech tenant sync failed for branch %s : %s",
+                        branch.id,response.text,
+                    )
+                _logger.info("Successfully synced branch update data for company %s", branch.id)
             except Exception as e:
-                raise UserError(str(e))
-            if response.status_code == 200:
-                return True
-            elif response.status_code == 401:
-                instance.refresh_tokens()
-                headers['Authorization'] = f'Bearer {instance.exp_token}'
-                try:
-                    response = requests.request("POST", url, headers=headers, data=payload)
-                except Exception as e:
-                    raise UserError(str(e))
-                if response.status_code == 200:
-                    return True
-            else:
-                raise UserError(f"Tenant Branch update failed: {response.status_code} - {response.text}")
+                _logger.error(
+                    "OrderTech API request error for branch %s: %s",
+                    branch.id,
+                    str(e),
+                )
+        return True
 
-    def action_all_company_branches(self):
-        self.ensure_one()
-        return {
-            'type': 'ir.actions.act_window',
-            'name': _('Branches'),
-            'res_model': 'res.company',
-            'domain': [('parent_id', '=', self.id)],
-            'context': {
-                'active_test': False,
-                'default_parent_id': self.id,
-            },
-            'views': [[self.env.ref('base.view_company_tree').id, 'list'], [False, 'kanban'], [False, 'form']],
-        }
+    @api.model_create_multi
+    def create(self, vals_list):
+        companies = super().create(vals_list)
+
+        # Filter only valid branch records
+        branches = companies.filtered(
+            lambda c: c.is_branch and c.parent_id and c.parent_id.ordertech_tenantId
+        )
+        if branches:
+            branches.create_tenant_branch_api()
+        return companies
+
+    def create_tenant_branch_api(self):
+        instance = self.env.ref("ordertech_integration.default_ordertech_instance")
+        if not instance or not instance.ordertech_token:
+            _logger.error("OrderTech instance missing, branch sync skipped.")
+            return False
+        for branch in self:
+            url = f"{instance.url}/api/branches"
+            headers = {
+                'accept': '*/*',
+                'Content-Type': 'application/json',
+                'Authorization': f'Bearer {instance.ordertech_token}'
+            }
+            slugify = self.env['ir.http']._slugify
+            slug = slugify(branch.name)
+            tenantId = branch.parent_id.ordertech_tenantId
+            timezone = self.env.context.get('tz')
+            payload = json.dumps({
+                "name": branch.name,
+                "slug": slug,
+                "tenantId": tenantId,
+                "status": "open",
+                "timezone": timezone,
+                "addressLine1": branch.street,
+                "addressLine2": branch.street2,
+                "city": branch.state_id.name,
+                "region": branch.city,
+                "postalCode": branch.zip,
+                "countryCode": branch.country_code,
+                "phonePublic": branch.phone,
+                "email": branch.email,
+                "deliveryRadiusKm": branch.delivery_radius_km,
+                "notes": branch.notes,
+                "openingTime": branch.float_to_time(branch.opening_time),
+                "closingTime": branch.float_to_time(branch.closing_time)
+            })
+            try:
+                response = requests.request("POST", url, headers=headers, data=payload, timeout=10)
+                if response.status_code != 201:
+                    _logger.error(
+                        "OrderTech tenant branch sync failed for branch %s: %s ",
+                        branch.id,response.text,
+                    )
+                    continue
+                data = response.json()
+                branch.sudo().write({
+                    'ordertech_tenant_branchId': data['id'],
+                    'ordertech_tenantId': data['tenantId'],
+                })
+                _logger.info("Successfully synced branch data for branch %s", branch.id)
+            except Exception as e:
+                _logger.error(
+                    "OrderTech API request error for branch %s: %s",
+                    branch.id,
+                    str(e),
+                )
+
+    def action_sync_branch_to_ordertech(self):
+        branches = self.filtered(
+            lambda c: c.is_branch and c.parent_id and c.parent_id.ordertech_tenantId and not c.ordertech_tenant_branchId
+        )
+        if branches:
+            branches.create_tenant_branch_api()
+
+        return True

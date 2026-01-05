@@ -1,10 +1,19 @@
 import json
+import logging
 
 import requests
 
-from odoo import models , fields, api
-from odoo.exceptions import UserError
-from bs4 import BeautifulSoup
+from odoo import models, fields, api, _
+from odoo.exceptions import ValidationError
+from odoo.tools import email_normalize
+
+_logger = logging.getLogger(__name__)
+
+CUSTOMER_TRACKED_FIELDS = {
+    "name",
+    "phone",
+    "email"
+}
 
 
 class ResPartner(models.Model):
@@ -12,113 +21,137 @@ class ResPartner(models.Model):
 
     ordertech_customerId = fields.Char()
     ordertech_tenantId = fields.Char(related='company_id.ordertech_tenantId')
+    ordertech_tenant_branchId = fields.Char(related='company_id.ordertech_tenant_branchId')
 
     def default_get(self, default_fields):
         defaults = super().default_get(default_fields)
         if not defaults.get('parent_id'):
             defaults['company_id'] = self.env.company.id
         return defaults
-    def sync_data_to_ordertech(self):
-        for rec in self:
-            if rec.company_id and rec.company_id.is_restaurant and not rec.ordertech_customerId:
-                rec.create_tenant_customer_api()
-            else:
-                raise UserError("There is not data to sync")
-    # @api.model_create_multi
-    # def create(self, vals_list):
-    #     partners = super(ResPartner, self).create(vals_list)
-    #     for partner in partners:
-    #         if partner.company_id and partner.company_id.is_restaurant:
-    #             partner.create_tenant_customer_api()
-    #     return partners
+
+    # @api.constrains('email')
+    # def _check_email(self):
+    #     for rec in self:
+    #         if rec.email and not email_normalize(rec.email):
+    #             raise ValidationError(_("Invalid email format"))
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        partners = super(ResPartner, self).create(vals_list)
+
+        customers = partners.filtered(
+            lambda p: (
+                    p.customer_rank
+                    and p.company_id.parent_id.is_restaurant
+                    and p.company_id.ordertech_tenantId
+                    and p.company_id.ordertech_tenant_branchId
+                    and not p.ordertech_customerId
+            )
+        )
+        if customers:
+            customers.create_tenant_customer_api()
+        return partners
 
     def create_tenant_customer_api(self):
         instance = self.env.ref("ordertech_integration.default_ordertech_instance")
-        if not instance:
-            raise UserError("OrderTech instance is missing.")
-        for partner in self:
-            if not partner.ordertech_tenantId:
-                raise UserError("Customer Company has no linked OrderTech tenant yet.")
-            url = f"{instance.url}/api/customers/tenant/{partner.ordertech_tenantId}"
-            payload = json.dumps({
-                "full_name": partner.name,
-                "phone_e164": partner.phone,
-                "email": partner.email,
-                "language": partner.lang,
-                "notes": BeautifulSoup(partner.comment, "html.parser").get_text().strip() if partner.comment else None,
-            })
+        if not instance or not instance.ordertech_token:
+            _logger.error("OrderTech instance missing, customer sync skipped.")
+            return False
+        for customer in self:
+            url = f"{instance.url}/api/customers/tenant/{customer.company_id.ordertech_tenantId}"
             headers = {
                 'accept': '*/*',
                 'Content-Type': 'application/json',
-                'Authorization': f'Bearer {instance.exp_token}'
+                'Authorization': f'Bearer {instance.ordertech_token}'
             }
+            payload = json.dumps({
+                "full_name": customer.name,
+                "phone_e164": customer.phone,
+                # "email": customer.email,
+            })
             try:
-                response = requests.request("POST", url, headers=headers, data=payload)
+                response = requests.request("POST", url, headers=headers, data=payload, timeout=10)
+                if response.status_code != 201:
+                    _logger.error(
+                        "OrderTech tenant customer sync failed for customer %s: %s ",
+                        customer.id, response.text,
+                    )
+                    continue
+                data = response.json()
+                customer.sudo().write({
+                    'ordertech_customerId': data['id'],
+                })
+                _logger.info("Successfully synced customer data for customer %s", customer.id)
             except Exception as e:
-                raise UserError(str(e))
+                _logger.error(
+                    "OrderTech API request error for customer %s: %s",
+                    customer.id,
+                    str(e),
+                )
 
-            if response.status_code == 201:
-                response_data = response.json()
-                partner.ordertech_customerId = response_data.get("id")
-                partner.ordertech_tenantId = response_data.get("tenantId")
-            elif response.status_code == 401:
-                instance.refresh_tokens()
-                headers['Authorization'] = f'Bearer {instance.exp_token}'
-                try:
-                    response = requests.request("POST", url, headers=headers, data=payload)
-                except Exception as e:
-                    raise UserError(str(e))
-                if response.status_code == 201:
-                    response_data = response.json()
-                    partner.ordertech_customerId = response_data.get("id")
-                    partner.ordertech_tenantId = response_data.get("tenantId")
-
-            else:
-                raise UserError(f"Tenant Customer create failed: {response.status_code} - {response.text}")
-
-    # def write(self, vals):
-    #     res = super(ResPartner, self).write(vals)
-    #     partner_tracked_fields = {"name", "phone", "email", "lang", "notes"}
-    #     for partner in self:
-    #         if partner.company_id and partner.company_id.is_restaurant:
-    #             if any(field in vals for field in partner_tracked_fields):
-    #                 partner.update_tenant_customer_api()
-    #     return res
+    def write(self, vals):
+        trigger_update_cust = bool(CUSTOMER_TRACKED_FIELDS & vals.keys())
+        res = super(ResPartner, self).write(vals)
+        if trigger_update_cust:
+            customers = self.filtered(
+                lambda p: (
+                        p.customer_rank
+                        and p.ordertech_customerId
+                        and p.company_id.parent_id.is_restaurant
+                        and p.company_id.ordertech_tenantId
+                        and p.company_id.ordertech_tenant_branchId
+                )
+            )
+            if customers:
+                customers.update_tenant_customer_api()
+        return res
 
     def update_tenant_customer_api(self):
         instance = self.env.ref("ordertech_integration.default_ordertech_instance")
-        if not instance:
-            raise UserError("OrderTech instance is missing.")
-        for partner in self:
-            if not partner.ordertech_tenantId:
-                raise UserError("Customer Company has no linked OrderTech tenant yet.")
-            url = f"{instance.url}/api/customers/{partner.ordertech_customerId}/tenant/{partner.ordertech_tenantId}"
-            payload = json.dumps({
-                "full_name": partner.name,
-                "phone_e164": partner.phone,
-                "email": partner.email,
-                "language": partner.lang,
-                "notes": BeautifulSoup(partner.comment, "html.parser").get_text().strip() if partner.comment else None,
-            })
+        if not instance or not instance.ordertech_token:
+            _logger.error("OrderTech instance is missing.")
+            return False
+        for customer in self:
+            url = f"{instance.url}/api/customers/{customer.ordertech_customerId}/tenant/{customer.company_id.ordertech_tenantId}"
             headers = {
                 'accept': '*/*',
                 'Content-Type': 'application/json',
-                'Authorization': f'Bearer {instance.exp_token}'
+                'Authorization': f'Bearer {instance.ordertech_token}'
             }
+            payload = json.dumps({
+                "full_name": customer.name,
+                "phone_e164": customer.phone,
+                # "email": customer.email,
+            })
             try:
-                response = requests.request("PUT", url, headers=headers, data=payload)
+                response = requests.request("PUT", url, headers=headers, data=payload, timeout=10)
+                if response.status_code != 200:
+                    _logger.error(
+                        "OrderTech tenant customer sync failed for customer %s: %s ",
+                        customer.id, response.text,
+                    )
+                    continue
+                _logger.info("Successfully synced customer data update for customer %s", customer.id)
             except Exception as e:
-                raise UserError(str(e))
-            if response.status_code == 200:
-                return True
-            elif response.status_code == 401:
-                instance.refresh_tokens()
-                headers['Authorization'] = f'Bearer {instance.exp_token}'
-                try:
-                    response = requests.request("POST", url, headers=headers, data=payload)
-                except Exception as e:
-                    raise UserError(str(e))
-                if response.status_code == 200:
-                    return True
-            else:
-                raise UserError(f"Tenant Customer update failed: {response.status_code} - {response.text}")
+                _logger.error(
+                    "OrderTech API request error for customer %s: %s",
+                    customer.id,
+                    str(e),
+                )
+        return True
+
+    def action_sync_customer_to_ordertech(self):
+        customers = self.filtered(
+            lambda p: (
+                    p.customer_rank
+                    and p.company_id.parent_id.is_restaurant
+                    and p.company_id.ordertech_tenantId
+                    and p.company_id.ordertech_tenant_branchId
+                    and not p.ordertech_customerId
+            )
+        )
+        if customers:
+            customers.create_tenant_customer_api()
+
+        return True
+
